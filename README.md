@@ -48,86 +48,116 @@ Generated artifacts:
 
    ```bash
    python -m venv .venv
-   source .venv/bin/activate        # macOS / Linux
-   # .venv\Scripts\activate         # Windows
-   ```
+   # Fraud and Anomaly Detection — Credit Card Transactions
 
-3. **Install dependencies**
+   This repository contains a production-style implementation comparing supervised fraud classification and unsupervised anomaly detection on the Kaggle Credit Card Fraud dataset.
+
+   Dataset
+   -------
+
+   The experiments use the Kaggle *Credit Card Fraud Detection* dataset:
+
+   - https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
+
+   Place the downloaded CSV at `data/creditcard.csv` before running training.
+
+   Why this project
+   ----------------
+
+   - Demonstrates time-based splitting (past → train, future → test) to avoid leakage.  
+   - Compares simple baselines (Logistic Regression) with a tuned LightGBM classifier.  
+   - Benchmarks unsupervised anomaly detectors (Isolation Forest, One-Class SVM, KMeans) as label-free baselines.  
+   - Uses a cost-sensitive threshold search to pick operating points that prioritize catching frauds over reducing false alarms.  
+   - Provides a minimal `FastAPI` inference endpoint for online scoring.
+
+   Repository layout
+   -----------------
+
+   - `src/` — Python package with core modules: preprocessing, training, evaluation, viz, and API.  
+      - `src/config.py` — global configuration (paths, seeds, cost weights).  
+      - `src/data_preprocessing.py` — loading, cleaning, preprocessing pipelines, and time-based split.  
+      - `src/models_supervised.py` — supervised model pipelines (LogReg, LightGBM).  
+      - `src/models_unsupervised.py` — unsupervised detectors and helpers.  
+      - `src/train_supervised.py` — script to train and evaluate supervised models.  
+      - `src/train_unsupervised.py` — script to train/evaluate unsupervised detectors.  
+      - `src/evaluation.py` — metrics, PR/ROC utilities, and cost-based threshold search.  
+      - `src/api.py` — FastAPI app exposing a `/score` endpoint for single-transaction scoring.  
+   - `data/` — place `creditcard.csv` here (not committed).  
+   - `models/` — saved pipelines after training.  
+   - `results/` — CSV metrics and plots produced by training scripts.  
+
+   Quickstart
+   ----------
+
+   1. Create and activate a virtual environment and install dependencies:
 
    ```bash
+   python -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
 
-4. **Train supervised models**
+   2. Download the dataset from the Kaggle link above and save it as `data/creditcard.csv`.
+
+   3. Train supervised models (Logistic Regression + LightGBM):
 
    ```bash
    python -m src.train_supervised
    ```
 
-   This will:
-
-   - Train Logistic Regression and a tuned LightGBM model on the time-based training split.  
-   - Choose the decision threshold that minimizes expected cost.  
-   - Save pipelines under `models/`.  
-   - Log metrics to `results/supervised_metrics.csv` and generate ROC/PR plots under `results/plots/`.[file:56][file:57][file:58][file:59][file:60]
-
-5. **Train unsupervised anomaly detectors (optional)**
+   4. (Optional) Train unsupervised detectors:
 
    ```bash
    python -m src.train_unsupervised
    ```
 
-   This trains Isolation Forest, One-Class SVM, and KMeans on non-fraud data (where applicable), then evaluates them on the test split and logs metrics to `results/unsupervised_metrics.csv`.[file:55]
-
-6. **Run the FastAPI service**
+   5. Run the API locally for online scoring:
 
    ```bash
    uvicorn src.api:app --reload
    ```
 
-   The API exposes:
+   API example
+   -----------
 
-   - `POST /score` — accepts a JSON body with a `features` dictionary (one transaction) and returns a fraud **score** and binary **label** computed using the saved LightGBM pipeline.[file:61]
+   POST a single transaction to `/score` (JSON body with feature vector). Example payload and `curl`:
 
-## Results
+   ```bash
+   curl -sS -X POST "http://localhost:8000/score" \
+      -H "Content-Type: application/json" \
+      -d '{"features": {"V1": -1.3598071336738, "V2": -0.0727811733098497, "V3": 2.53634673796914, "Amount": 149.62}}'
+   ```
 
-### Supervised models (time-based split)
+   The response includes a `score` (probability or anomaly score) and a `label` (binary decision using the stored pipeline threshold).
 
-From `results/supervised_metrics.csv`:[file:56]
+   Results
+   -------
 
-- **Logistic Regression**  
-  - ROC-AUC ≈ 0.986  
-  - PR-AUC ≈ 0.76  
-  - Precision ≈ 0.51, Recall ≈ 0.81  
-  - Expected cost ≈ 128 (with asymmetric FP/FN costs)
+   - Trained pipelines are saved to `models/`.  
+   - Supervised metrics (ROC-AUC, PR-AUC, precision, recall, expected cost) are written to `results/supervised_metrics.csv`.  
+   - Unsupervised metrics are written to `results/unsupervised_metrics.csv`.  
+   - Plots (ROC / PR curves) are placed under `results/plots/`.
 
-- **LightGBM (tuned with GridSearchCV)**  
-  - ROC-AUC ≈ 0.986  
-  - PR-AUC ≈ 0.81  
-  - Precision ≈ 0.92, Recall ≈ 0.76, F1 ≈ 0.83  
-  - Expected cost ≈ 95
+   Notes & extensions
+   ------------------
 
-ROC and PR curves for both models are saved under `results/plots/` and show consistently strong separation between fraud and non-fraud classes.[file:57][file:58][file:59][file:60]
+   - Consider adding SHAP explanations for LightGBM feature importances.  
+   - Add a `LICENSE` file if you want to choose a specific open-source license (MIT recommended for simple projects).  
+   - Add CI (tests) to ensure training scripts still run after changes.
 
-### Unsupervised anomaly detection
+   Acknowledgements & citation
+   ---------------------------
 
-From `results/unsupervised_metrics.csv`:[file:55]
+   Original dataset: M. Dal Pozzolo, O. Caelen, R.A. Johnson and G. Bontempi — "Credit Card Fraud Detection" (Kaggle). See the Kaggle dataset page above for citation details.
 
-- **Isolation Forest**  
-  - ROC-AUC ≈ 0.94, PR-AUC ≈ 0.03  
-  - High recall but very low precision → expected cost ≈ 2319.
+   License
+   -------
 
-- **One-Class SVM**  
-  - ROC-AUC ≈ 0.94, PR-AUC ≈ 0.15  
-  - Slightly better precision, but still costly → expected cost ≈ 1043.
+   This repository does not include the dataset. Check the Kaggle dataset page for its terms. Code in this repo is available under the MIT License (add a `LICENSE` file to declare formally).
 
-- **KMeans (k=2)**  
-  - Fails to separate frauds in this setting → expected cost ≈ 786.
+   ----
 
-This highlights that while unsupervised anomaly detection can surface suspicious transactions without labels, a supervised LightGBM model offers a far superior precision–recall–cost trade-off once labels are available.
+   If you'd like, I can also:
 
-## Possible Extensions
-
-- Add SHAP-based feature importance for LightGBM.  
-- Perform threshold sweeps to visualize cost vs decision threshold.  
-- Experiment with additional models (e.g., XGBoost, CatBoost) or sequence/graph-based fraud representations.
+   - add a short `examples/` notebook demonstrating end-to-end training and scoring, or  
+   - generate a minimal `LICENSE` file (MIT) and a `CONTRIBUTING.md` template.
